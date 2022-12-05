@@ -7,7 +7,9 @@
 #include <numeric>
 #include <map>
 
-void parseInputFile(std::string filename, std::vector<uint32_t>& vals)
+typedef std::vector<uint32_t> T;
+
+void parseInputFile(std::string filename, T& vals)
 {
    std::fstream f(filename);
    std::string strVal;
@@ -20,11 +22,11 @@ void parseInputFile(std::string filename, std::vector<uint32_t>& vals)
    f.close();
 }
 
-void part1(std::string filename)
+void part1(T input)
 {
 }
 
-void part2(std::string filename)
+void part2(T input)
 {
 }
 
@@ -58,8 +60,14 @@ int main(int argc, char** argv)
       part2File = "input.txt";
    }
 
-   part1(part1File);
-   part2(part2File);
+   T vals;
+   parseInputFile(part1File, vals);
+   part1(vals);
+
+   vals.clear();
+
+   parseInputFile(part2File, vals);
+   part2(vals);
    
    return 0;
 }
