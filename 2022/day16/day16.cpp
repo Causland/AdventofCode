@@ -82,11 +82,23 @@ void printValves(T& valves)
    }
 }
 
-uint32_t findMaxPressure(Valve* valve, Valve* lastValve, std::set<std::string>& openedValves, int32_t hour)
+uint32_t findMaxPressure(Valve* valve, Valve* lastValve, std::set<std::string>& openedValves, int32_t hour, uint32_t prevVal, std::vector<std::pair<std::set<std::string>, uint32_t>>* finishedStates)
 {
    // Check if time has run out
    if (hour <= 0)
    {
+      if (finishedStates != nullptr) // If a states vector is provided, populate it
+      {
+         auto it = std::find_if(finishedStates->begin(), finishedStates->end(), [openedValves](auto& aPair){ return openedValves == aPair.first; });
+         if (it != finishedStates->end())
+         {
+            if ((*it).second < prevVal) (*it).second = prevVal;
+         }
+         else
+         {
+            finishedStates->push_back({openedValves, prevVal});
+         }
+      }
       return 0;
    }
 
@@ -117,14 +129,14 @@ uint32_t findMaxPressure(Valve* valve, Valve* lastValve, std::set<std::string>& 
          }
 
          // Just move
-         auto pressure = findMaxPressure(neighbor, valve, openedValves, hour - 1);
+         auto pressure = findMaxPressure(neighbor, valve, openedValves, hour - 1, prevVal, finishedStates);
          if (pressure > justMovePressure) justMovePressure = pressure;
       }
       else
       {
          // Open then move
          openedValves.insert(valve->id);
-         auto pressure = findMaxPressure(neighbor, valve, openedValves, hour - 2);
+         auto pressure = findMaxPressure(neighbor, valve, openedValves, hour - 2, prevVal + openPressure, finishedStates);
          if (pressure > openThenMovePressure) openThenMovePressure = pressure;
          openedValves.erase(valve->id);
       }
@@ -134,204 +146,12 @@ uint32_t findMaxPressure(Valve* valve, Valve* lastValve, std::set<std::string>& 
    return std::max(openPressure + openThenMovePressure, justMovePressure);
 }
 
-bool detectDeadEnd(Valve* currentValve, Valve* valveToCheck)
-{
-   Valve* l = currentValve;
-   Valve* v = valveToCheck;
-   do
-   {
-      if (v->paths.size() > 2) return false;
-      if (v->paths.size() == 1) return true;
-
-      // Move to next valve
-      auto it = std::find_if_not(v->paths.begin(), v->paths.end(), [l](auto path){ return path == l; });
-      l = v;
-      v = *it;
-   } while (true);
-}
-
-uint32_t findMaxPressureWithTwo(Valve* valveMe, Valve* valveElephant, Valve* lastValveMe, Valve* lastValveElephant, std::set<std::string>& openedValves, int32_t hourMe, int32_t hourElephant)
-{
-   bool meTimeExpired = hourMe <= 0;
-   bool elephantTimeExpired = hourElephant <= 0;
-
-   // Check if time has run out
-   if (meTimeExpired && elephantTimeExpired)
-   {
-      return 0;
-   }
-
-   // Check if this valve has already been opened (Saves time in calculating later on)
-   // Say its already opened if the flowRate is 0
-   bool meAlreadyOpen = openedValves.find(valveMe->id) != openedValves.end() || valveMe->flowRate == 0;
-   bool elephantAlreadyOpen = openedValves.find(valveElephant->id) != openedValves.end() || valveElephant->flowRate == 0;
-
-   // Calculate pressure released by opening this valve
-   uint32_t meOpenPressure = 0;
-   uint32_t elephantOpenPressure = 0;
-   if (!meAlreadyOpen && !meTimeExpired)
-   {
-      meOpenPressure = valveMe->flowRate * (hourMe - 1);
-   }
-   if (!elephantAlreadyOpen && !elephantTimeExpired)
-   {
-      elephantOpenPressure = valveElephant->flowRate * (hourElephant - 1);
-   }
-
-   // If the hours are different, we want to only move/open the one that has more time until they are
-   // at the same time period again. This prevents valves from being read/opened out of chronologic order
-   if (hourElephant < hourMe)
-   {
-      // Only perform me actions
-      uint32_t openThenMovePressure = 0;
-      uint32_t justMovePressure = 0;
-      for (auto* neighbor : valveMe->paths)
-      {
-         if (meAlreadyOpen)
-         {
-            // If the neighbor was the immediate last neighbor skip. We don't want
-            // to go immediately back to where we were
-            if (lastValveMe != nullptr)
-            {
-               if (neighbor == lastValveMe) continue;
-            }
-
-            // Just move
-            auto pressure = findMaxPressureWithTwo(neighbor, valveElephant, valveMe, lastValveElephant, openedValves, hourMe - 1, hourElephant);
-            if (pressure > justMovePressure) justMovePressure = pressure;
-         }
-         else
-         {
-            // Open then move
-            openedValves.insert(valveMe->id);
-            auto pressure = findMaxPressureWithTwo(neighbor, valveElephant, valveMe, lastValveElephant, openedValves, hourMe - 2, hourElephant);
-            if (pressure > openThenMovePressure) openThenMovePressure = pressure;
-            openedValves.erase(valveMe->id);
-         }     
-      }
-      return std::max(meOpenPressure + openThenMovePressure, justMovePressure);
-   }
-   else if (hourMe < hourElephant)
-   {
-      // Only perform elephant actions
-      uint32_t openThenMovePressure = 0;
-      uint32_t justMovePressure = 0;
-      for (auto* neighbor : valveElephant->paths)
-      {
-         if (elephantAlreadyOpen)
-         {
-            // If the neighbor was the immediate last neighbor skip. We don't want
-            // to go immediately back to where we were
-            if (lastValveElephant != nullptr)
-            {
-               if (neighbor == lastValveElephant) continue;
-            }
-
-            // Just move
-            auto pressure = findMaxPressureWithTwo(valveMe, neighbor, lastValveMe, valveElephant, openedValves, hourMe, hourElephant - 1);
-            if (pressure > justMovePressure) justMovePressure = pressure;
-         }
-         else
-         {
-            // Open then move
-            openedValves.insert(valveElephant->id);
-            auto pressure = findMaxPressureWithTwo(valveMe, neighbor, lastValveMe, valveElephant, openedValves, hourMe, hourElephant - 2);
-            if (pressure > openThenMovePressure) openThenMovePressure = pressure;
-            openedValves.erase(valveElephant->id);
-         }     
-      }
-      return std::max(elephantOpenPressure + openThenMovePressure, justMovePressure);
-   }
-   else
-   {
-      // Perform actions for both
-      uint32_t openOpenPressure = 0;
-      uint32_t openMovePressure = 0;
-      uint32_t moveOpenPressure = 0;
-      uint32_t moveMovePressure = 0;
-      for (auto* meNeighbor : valveMe->paths)
-      {
-         if (meNeighbor->deadEndPathHit) continue; // Do not go down same dead end that someone else has already gone down
-         meNeighbor->deadEndPathHit = detectDeadEnd(valveMe, meNeighbor);
-         for (auto* elephantNeighbor : valveElephant->paths)
-         {
-            if (elephantNeighbor->deadEndPathHit) continue; // Do not go down same dead end that someone else has already gone down
-            elephantNeighbor->deadEndPathHit = detectDeadEnd(valveElephant, elephantNeighbor);
-
-            if (meNeighbor == elephantNeighbor)
-            {
-               // Always move me, choose to open or move elephant
-               if (elephantAlreadyOpen)
-               {
-                  // Move both
-                  auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 1, hourElephant - 1);
-                  if (pressure > moveMovePressure) moveMovePressure = pressure;
-               }
-               else
-               {
-                  // Move me, open elephant
-                  openedValves.insert(valveElephant->id);
-                  auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 1, hourElephant - 2);
-                  if (pressure > moveOpenPressure) moveOpenPressure = pressure;
-                  openedValves.erase(valveElephant->id);
-               }      
-            }
-            else
-            {
-               if (meAlreadyOpen)
-               {
-                  if (elephantAlreadyOpen)
-                  {
-                     // Move both
-                     auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 1, hourElephant - 1);
-                     if (pressure > moveMovePressure) moveMovePressure = pressure;
-                  }
-                  else
-                  {
-                     // Move me, open elephant
-                     openedValves.insert(valveElephant->id);
-                     auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 1, hourElephant - 2);
-                     if (pressure > moveOpenPressure) moveOpenPressure = pressure;
-                     openedValves.erase(valveElephant->id);
-                  }
-               }
-               else
-               {
-                  if (elephantAlreadyOpen)
-                  {
-                     // Open me, move elephant
-                     openedValves.insert(valveMe->id);
-                     auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 2, hourElephant - 1);
-                     if (pressure > openMovePressure) openMovePressure = pressure;
-                     openedValves.erase(valveMe->id);
-                  }
-                  else
-                  {
-                     // Open me, open elephant
-                     openedValves.insert(valveMe->id);
-                     openedValves.insert(valveElephant->id);
-                     auto pressure = findMaxPressureWithTwo(meNeighbor, elephantNeighbor, valveMe, valveElephant, openedValves, hourMe - 2, hourElephant - 2);
-                     if (pressure > openOpenPressure) openOpenPressure = pressure;
-                     openedValves.erase(valveMe->id);      
-                     openedValves.erase(valveElephant->id);  
-                  }
-               }
-            }
-         }
-      }
-      return std::max({meOpenPressure + elephantOpenPressure + openOpenPressure,
-                       meOpenPressure + openMovePressure,
-                       elephantOpenPressure + moveOpenPressure,
-                       moveMovePressure});
-   }
-}
-
 void part1(T& input)
 {
    Valve* startValve = &(*std::find_if(input.begin(), input.end(), [](auto v){ return v.id == "AA"; }));
    std::set<std::string> openedValves;
 
-   auto result = findMaxPressure(startValve, nullptr, openedValves, 30);
+   auto result = findMaxPressure(startValve, nullptr, openedValves, 30, 0, nullptr);
    std::cout << result << "\n";
 }
 
@@ -339,8 +159,19 @@ void part2(T& input)
 {
    Valve* startValve = &(*std::find_if(input.begin(), input.end(), [](auto v){ return v.id == "AA"; }));
    std::set<std::string> openedValves;
+   std::vector<std::pair<std::set<std::string>, uint32_t>> meFinishedStates;
 
-   auto result = findMaxPressureWithTwo(startValve, startValve, nullptr, nullptr, openedValves, 26, 26);
+   // Find all the different combinations of valve openings with their point values
+   findMaxPressure(startValve, nullptr, openedValves, 26, 0, &meFinishedStates);
+
+   uint32_t result = 0;
+   for (auto& pair : meFinishedStates)
+   {
+      // Pass the finished state of the valves to find the max pressure released by the elephant
+      uint32_t elephantMax = findMaxPressure(startValve, nullptr, pair.first, 26, 0, nullptr);
+      if (pair.second + elephantMax > result) result = pair.second + elephantMax;
+   }
+
    std::cout << result << "\n";
 }
 
