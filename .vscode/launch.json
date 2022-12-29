@@ -8,7 +8,7 @@
         "name": "(gdb) Launch",
         "type": "cppdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/2022/day16/a.out",
+        "program": "${workspaceFolder}/2022/day17/a.out",
         "args": ["0", "0"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
