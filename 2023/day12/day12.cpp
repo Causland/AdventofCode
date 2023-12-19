@@ -4,9 +4,11 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
-#include <numeric>
 #include <sstream>
 #include <chrono>
+#include <omp.h>
+#include <atomic>
+#include <mutex>
 
 struct Record
 {
@@ -93,15 +95,19 @@ uint64_t repairSequence(const std::string& seq, const std::vector<uint64_t>& gro
 
 void part1(T input)
 {
-   std::cout << std::accumulate(input.begin(), input.end(), 0, 
-                                    [](const uint64_t& s, const Record& r){ return s + repairSequence(r.sequence, r.groups); })
-            << "\n";
+   std::atomic<uint64_t> sum{0};
+
+#pragma omp parallel for
+   for (auto i=0; i<input.size(); ++i)
+   {
+      sum += repairSequence(input[i].sequence, input[i].groups);
+   }
+   std::cout << sum << "\n";
 }
 
 void part2(T input)
 {
    auto start{std::chrono::system_clock::now()};
-   uint64_t sum{0};
    for (auto& r : input)
    {
       auto origSize{r.sequence.size()};
@@ -120,11 +126,21 @@ void part2(T input)
       }
    }
 
-   std::cout << std::accumulate(input.begin(), input.end(), 0, 
-                                    [](const uint64_t& s, const Record& r){ return s + repairSequence(r.sequence, r.groups); })
-            << "\n";
+   std::atomic<uint64_t> sum{0};
+   std::mutex outputLock;
+
+#pragma omp parallel for
+   for (auto i=0; i<input.size(); ++i)
+   {
+      {
+         std::unique_lock<std::mutex> lk{outputLock};
+         std::cout << i << " " << input[i].sequence << "\n";
+      }
+      sum += repairSequence(input[i].sequence, input[i].groups);
+   }
+
    auto end{std::chrono::system_clock::now()};
-   std::cout << "P2 took " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << "s\n";
+   std::cout << "P2 took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
 }
 
 int main(int argc, char** argv)
